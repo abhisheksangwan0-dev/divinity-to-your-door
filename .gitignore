@@ -1,0 +1,10 @@
+node_modules
+.vercel
+artifacts
+screenshots
+attachments
+.grok/*
+!.grok/app-env.json
+*.log
+.project_id
+.node_modules.lock

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1200">
+  <rect width="800" height="1200" fill="#e7e0d4"/>
+  <g fill="none" stroke="#1c1612" stroke-width="1.4">
+    <path d="M250 220 V620"/>
+    <path d="M310 180 V660"/>
+    <path d="M370 150 V690"/>
+    <path d="M430 150 V690"/>
+    <path d="M490 180 V660"/>
+    <path d="M550 220 V620"/>
+  </g>
+  <path d="M250 620 Q400 760 550 620" fill="none" stroke="#9c341f" stroke-width="2"/>
+  <text x="400" y="900" text-anchor="middle" fill="#1c1612" font-family="Georgia, 'Times New Roman', serif" font-size="58">Psalms</text>
+  <text x="400" y="1080" text-anchor="middle" fill="#5c534c" font-family="Georgia, serif" font-size="16" letter-spacing="6">DIVINITY EDITIONS</text>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1200">
+  <rect width="800" height="1200" fill="#3d2e28"/>
+  <rect x="388" y="280" width="24" height="280" rx="2" fill="#f3eee4"/>
+  <circle cx="400" cy="268" r="16" fill="#9c341f"/>
+  <text x="400" y="760" text-anchor="middle" fill="#f3eee4" font-family="Georgia, 'Times New Roman', serif" font-size="48">The Imitation</text>
+  <text x="400" y="830" text-anchor="middle" fill="#cbbba8" font-family="Georgia, serif" font-size="28">of Christ</text>
+  <text x="400" y="1080" text-anchor="middle" fill="#cbbba8" font-family="Georgia, serif" font-size="16" letter-spacing="6">DIVINITY EDITIONS</text>
+</svg>

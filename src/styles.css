@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ivory: #f3eee4;
+  --color-paper: #fffdf8;
+  --color-ink: #1c1612;
+  --color-muted: #5c534c;
+  --color-sand: #cbbba8;
+  --color-line: #e3d7c6;
+  --color-vermilion: #9c341f;
+  --color-vermilion-deep: #7c2818;
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --font-sans: "Outfit", "Avenir Next", "Segoe UI", sans-serif;
+  --shadow-book: 0 18px 40px rgb(28 22 18 / 0.1);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background: var(--color-ivory);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+    line-height: 1.12;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 3px;
+  }
+  ::selection {
+    background: var(--color-vermilion);
+    color: var(--color-paper);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rise > * {
+  animation: rise 480ms ease-out both;
+}
+.rise > *:nth-child(2) {
+  animation-delay: 70ms;
+}
+.rise > *:nth-child(3) {
+  animation-delay: 140ms;
+}
+.rise > *:nth-child(4) {
+  animation-delay: 210ms;
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(20px);
+    opacity: 0.6;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.cart-panel[data-state="open"] {
+  animation: drawer-in 200ms ease-out;
+}
