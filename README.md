@@ -10,4 +10,4 @@ Religious bookshop. Live stock, a basket, and a demonstration checkout (test car
 4. Also set `VITE_AUTH_ENABLED` to `false`.
 5. Deploy. The build applies the catalog and stock tables.
 
-Without `DATABASE_URL`, stock will not stay saved.
+Without `DATABASE_URL`, stock and orders stay in the project's private Vercel Blob store, so a new server still sees the same shelf. Set `DATABASE_URL` to use Postgres instead.

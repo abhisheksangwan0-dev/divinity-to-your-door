@@ -114,6 +114,15 @@ async function sqlClient() {
   return getSql();
 }
 
+async function refreshCupboard() {
+  const { readCupboard } = await import("@/lib/cupboard");
+  await readCupboard();
+}
+
+function withCupboard<T>(task: () => Promise<T>) {
+  return import("@/lib/cupboard").then(({ holdCupboard }) => holdCupboard(task));
+}
+
 async function loadBooks() {
   const sql = await sqlClient();
   const rows = await sql.query<BookRow>(
@@ -122,11 +131,15 @@ async function loadBooks() {
   return rows.map(mapBook);
 }
 
-export const getCatalog = createServerFn({ method: "GET" }).handler(async () => loadBooks());
+export const getCatalog = createServerFn({ method: "GET" }).handler(async () => {
+  await refreshCupboard();
+  return loadBooks();
+});
 
 export const getBookDetail = createServerFn({ method: "GET" })
   .validator((slug: unknown) => (typeof slug === "string" ? slug : ""))
   .handler(async ({ data: slug }) => {
+    await refreshCupboard();
     if (!/^[a-z0-9-]{1,80}$/.test(slug)) return null;
     const books = await loadBooks();
     const book = books.find((item) => item.slug === slug) ?? null;
@@ -287,6 +300,7 @@ export const getCheckoutConfig = createServerFn({ method: "GET" }).handler(async
 export const beginPayment = createServerFn({ method: "POST" })
   .validator((input: PlaceOrderInput) => input)
   .handler(async ({ data }) => {
+    await refreshCupboard();
     const basket = await prepareBasket(data);
     if (!basket.ok) return basket;
     try {
@@ -320,6 +334,7 @@ export const beginPayment = createServerFn({ method: "POST" })
 export const placeOrder = createServerFn({ method: "POST" })
   .validator((input: PlaceOrderInput) => input)
   .handler(async ({ data }) => {
+    await refreshCupboard();
     const basket = await prepareBasket(data);
     if (!basket.ok) return basket;
     const payment = data?.payment;
@@ -359,118 +374,135 @@ export const placeOrder = createServerFn({ method: "POST" })
       return { ok: false as const, message };
     }
 
-    const sql = await sqlClient();
-    const taken: { id: string; qty: number }[] = [];
-    const restore = async () => {
-      for (const item of taken) {
-        await sql`update books set stock = stock + ${item.qty} where id = ${item.id}`;
-      }
-    };
-    const refund = async (message: string) => {
-      await restore();
-      try {
-        await pay.refundRazorpayPayment(payment.paymentId);
-        return { ok: false as const, message: `${message} The payment was refunded.` };
-      } catch {
-        return {
-          ok: false as const,
-          message: `${message} The payment could not be refunded automatically. Quote ${payment.paymentId} and we will return it.`,
-        };
-      }
-    };
-
-    const ship = cleanShip(data?.ship, basket.zoneId);
-    if (!ship.ok) return refund(ship.message);
-
-    try {
-      for (const line of basket.lines) {
-        const updated = await sql<{ id: string; title: string }>`
-          update books
-          set stock = stock - ${line.qty}
-          where id = ${line.bookId} and stock >= ${line.qty}
-          returning id, title
-        `;
-        const row = updated[0];
-        if (!row) {
-          const found = await sql<{ title: string; stock: number | string }>`
-            select title, stock from books where id = ${line.bookId}
-          `;
-          const title = found[0]?.title ?? "A title";
-          const stock = found[0] ? num(found[0].stock) : 0;
-          const message = stock <= 0 ? `${title} just sold out.` : `${title} has only ${stock} left.`;
-          return refund(message);
+    return withCupboard(async () => {
+      const fresh = await prepareBasket(data);
+      const refund = async (message: string) => {
+        try {
+          await pay.refundRazorpayPayment(payment.paymentId);
+          return { ok: false as const, message: `${message} The payment was refunded.` };
+        } catch {
+          return {
+            ok: false as const,
+            message: `${message} The payment could not be refunded automatically. Quote ${payment.paymentId} and we will return it.`,
+          };
         }
-        taken.push({ id: row.id, qty: line.qty });
+      };
+      if (!fresh.ok) return refund(fresh.message);
+      if (fresh.totalCents !== basket.totalCents || fresh.zoneId !== basket.zoneId) {
+        return refund("The shelf changed while the payment was opening.");
       }
-    } catch {
-      return refund("The cupboard could not update.");
-    }
 
-    let id = makeOrderId();
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const existing = await sql<{ id: string }>`select id from orders where id = ${id}`;
-      if (!existing.length) break;
-      id = makeOrderId();
-    }
-
-    try {
-      await sql`
-        insert into orders (
-          id, items, subtotal_cents, shipping_cents, total_cents, region, status, payment_id,
-          buyer_name, email, phone, street, city, postal, country
-        )
-        values (
-          ${id},
-          ${JSON.stringify(basket.items)},
-          ${basket.subtotalCents},
-          ${basket.postage},
-          ${basket.totalCents},
-          ${basket.zoneId},
-          'paid',
-          ${payment.paymentId},
-          ${ship.ship.name},
-          ${ship.ship.email},
-          ${ship.ship.phone},
-          ${ship.ship.street},
-          ${ship.ship.city},
-          ${ship.ship.postal},
-          ${ship.ship.country}
-        )
-      `;
-    } catch (err) {
-      const text = err instanceof Error ? err.message : "";
-      const code = err && typeof err === "object" && "code" in err ? String(err.code) : "";
-      if (code === "23505" || text.includes("orders_payment_id_idx") || text.toLowerCase().includes("duplicate")) {
+      const sql = await sqlClient();
+      const taken: { id: string; qty: number }[] = [];
+      const restore = async () => {
+        for (const item of taken) {
+          await sql`update books set stock = stock + ${item.qty} where id = ${item.id}`;
+        }
+      };
+      const undo = async (message: string) => {
         await restore();
-        return { ok: false as const, message: "This payment was already used for an order." };
+        return refund(message);
+      };
+
+      const ship = cleanShip(data?.ship, fresh.zoneId);
+      if (!ship.ok) return refund(ship.message);
+
+      try {
+        for (const line of fresh.lines) {
+          const updated = await sql<{ id: string; title: string }>`
+            update books
+            set stock = stock - ${line.qty}
+            where id = ${line.bookId} and stock >= ${line.qty}
+            returning id, title
+          `;
+          const row = updated[0];
+          if (!row) {
+            const found = await sql<{ title: string; stock: number | string }>`
+              select title, stock from books where id = ${line.bookId}
+            `;
+            const title = found[0]?.title ?? "A title";
+            const stock = found[0] ? num(found[0].stock) : 0;
+            const message = stock <= 0 ? `${title} just sold out.` : `${title} has only ${stock} left.`;
+            return undo(message);
+          }
+          taken.push({ id: row.id, qty: line.qty });
+        }
+      } catch {
+        return undo("The cupboard could not update.");
       }
-      return refund("The till could not record this order.");
-    }
 
-    for (const item of taken) {
-      await sql`
-        insert into stock_moves (book_id, delta, reason)
-        values (${item.id}, ${-item.qty}, 'sale')
-      `;
-    }
+      let id = makeOrderId();
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const existing = await sql<{ id: string }>`select id from orders where id = ${id}`;
+        if (!existing.length) break;
+        id = makeOrderId();
+      }
 
-    const order: PublicOrder = {
-      id,
-      items: basket.items,
-      subtotalCents: basket.subtotalCents,
-      shippingCents: basket.postage,
-      totalCents: basket.totalCents,
-      region: basket.zoneId,
-      status: "paid",
-      createdAt: new Date().toISOString(),
-    };
-    return { ok: true as const, order, method: confirmed.method, last4: confirmed.last4 };
+      try {
+        await sql`
+          insert into orders (
+            id, items, subtotal_cents, shipping_cents, total_cents, region, status, payment_id,
+            buyer_name, email, phone, street, city, postal, country
+          )
+          values (
+            ${id},
+            ${JSON.stringify(fresh.items)},
+            ${fresh.subtotalCents},
+            ${fresh.postage},
+            ${fresh.totalCents},
+            ${fresh.zoneId},
+            'paid',
+            ${payment.paymentId},
+            ${ship.ship.name},
+            ${ship.ship.email},
+            ${ship.ship.phone},
+            ${ship.ship.street},
+            ${ship.ship.city},
+            ${ship.ship.postal},
+            ${ship.ship.country}
+          )
+        `;
+      } catch (err) {
+        const textError = err instanceof Error ? err.message : "";
+        const code = err && typeof err === "object" && "code" in err ? String(err.code) : "";
+        if (code === "23505" || textError.includes("orders_payment_id_idx") || textError.toLowerCase().includes("duplicate")) {
+          await restore();
+          return { ok: false as const, message: "This payment was already used for an order." };
+        }
+        return undo("The till could not record this order.");
+      }
+
+      try {
+        for (const item of taken) {
+          await sql`
+            insert into stock_moves (book_id, delta, reason)
+            values (${item.id}, ${-item.qty}, 'sale')
+          `;
+        }
+      } catch {
+        await sql`delete from orders where id = ${id}`;
+        return undo("The till could not record this order.");
+      }
+
+      const order: PublicOrder = {
+        id,
+        items: fresh.items,
+        subtotalCents: fresh.subtotalCents,
+        shippingCents: fresh.postage,
+        totalCents: fresh.totalCents,
+        region: fresh.zoneId,
+        status: "paid",
+        createdAt: new Date().toISOString(),
+      };
+      return { ok: true as const, order, method: confirmed.method, last4: confirmed.last4 };
+    });
   });
 
 export const getOrder = createServerFn({ method: "GET" })
   .validator((id: unknown) => (typeof id === "string" ? id : ""))
   .handler(async ({ data: id }) => {
     if (!/^DV-[A-Z0-9]{6}$/.test(id)) return null;
+    await refreshCupboard();
     const sql = await sqlClient();
     const rows = await sql<OrderRow>`
       select id, items, subtotal_cents, shipping_cents, total_cents, region, status,
@@ -490,6 +522,7 @@ export const unlockStockroom = createServerFn({ method: "POST" })
 export const getStockroom = createServerFn({ method: "GET" }).handler(async () => {
   const locked = await requireDesk();
   if (locked) return { locked: true as const };
+  await refreshCupboard();
   const books = await loadBooks();
   const sql = await sqlClient();
   const orderRows = await sql<
@@ -555,7 +588,7 @@ export const getStockroom = createServerFn({ method: "GET" }).handler(async () =
 
 export const adjustStock = createServerFn({ method: "POST" })
   .validator((input: { bookId: string; delta: number }) => input)
-  .handler(async ({ data }) => {
+  .handler(async ({ data }) => withCupboard(async () => {
     const locked = await requireDesk();
     if (locked) return locked;
     if (!data || typeof data.bookId !== "string" || !/^[a-z0-9-]{1,40}$/.test(data.bookId)) {
@@ -585,11 +618,11 @@ export const adjustStock = createServerFn({ method: "POST" })
       values (${data.bookId}, ${data.delta}, ${data.delta > 0 ? "restock" : "adjust"})
     `;
     return { ok: true as const, book: mapBook(rows[0]) };
-  });
+  }));
 
 export const setPrice = createServerFn({ method: "POST" })
   .validator((input: { bookId: string; priceCents: number }) => input)
-  .handler(async ({ data }) => {
+  .handler(async ({ data }) => withCupboard(async () => {
     const locked = await requireDesk();
     if (locked) return locked;
     if (!data || typeof data.bookId !== "string" || !/^[a-z0-9-]{1,40}$/.test(data.bookId)) {
@@ -605,11 +638,11 @@ export const setPrice = createServerFn({ method: "POST" })
     );
     if (!rows[0]) return { ok: false as const, message: "Unknown book." };
     return { ok: true as const, book: mapBook(rows[0]) };
-  });
+  }));
 
 export const returnOrder = createServerFn({ method: "POST" })
   .validator((input: { id: string }) => input)
-  .handler(async ({ data }) => {
+  .handler(async ({ data }) => withCupboard(async () => {
     const locked = await requireDesk();
     if (locked) return locked;
     if (!data || typeof data.id !== "string" || !/^DV-[A-Z0-9]{6}$/.test(data.id)) {
@@ -654,4 +687,4 @@ export const returnOrder = createServerFn({ method: "POST" })
       `;
     }
     return { ok: true as const, id: data.id };
-  });
+  }));
