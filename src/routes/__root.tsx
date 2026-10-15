@@ -18,7 +18,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "Clothbound religious books posted worldwide from Jaipur. Live stock, a basket, and a demonstration checkout.",
+          "Clothbound religious books posted worldwide from Jaipur. Live stock, a basket, and Razorpay checkout.",
       },
       { name: "theme-color", content: "#9C341F" },
     ],

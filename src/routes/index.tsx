@@ -121,8 +121,8 @@ function Home() {
             },
             {
               icon: CreditCard,
-              title: "A demonstration till",
-              body: "Use the test card. We keep the order and the stock change, not your name or card.",
+              title: "Razorpay till",
+              body: "UPI, cards, and netbanking. Prices are in dollars; the charge is in rupees. No monthly fee.",
             },
           ].map((item) => (
             <li key={item.title} className="border border-line bg-paper p-5">

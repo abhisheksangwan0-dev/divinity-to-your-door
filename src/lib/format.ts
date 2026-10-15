@@ -5,6 +5,14 @@ export function formatMoney(cents: number) {
   }).format(cents / 100);
 }
 
+export function formatInr(paise: number) {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2,
+  }).format(paise / 100);
+}
+
 export function formatWeight(grams: number) {
   if (grams >= 1000) return `${(grams / 1000).toFixed(1)} kg`;
   return `${grams} g`;

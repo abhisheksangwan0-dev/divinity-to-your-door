@@ -50,7 +50,7 @@ export function SiteHeader() {
   return (
     <div>
       <p className="bg-vermilion px-5 py-2 text-center text-sm text-paper">
-        House editions, posted from Jaipur. The till is a demonstration — nothing is charged.
+        House editions, posted from Jaipur. Pay with UPI or card through Razorpay.
       </p>
       <header className="sticky top-0 z-30 border-b border-line bg-ivory/95 backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-5">

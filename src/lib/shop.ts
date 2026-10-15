@@ -140,7 +140,20 @@ export const getBookDetail = createServerFn({ method: "GET" })
 export type PlaceOrderInput = {
   lines: { bookId: string; qty: number }[];
   zoneId: string;
+  payment?: { orderId: string; paymentId: string; signature: string };
 };
+
+type Basket =
+  | { ok: false; message: string }
+  | {
+      ok: true;
+      lines: { bookId: string; qty: number }[];
+      zoneId: string;
+      items: OrderLine[];
+      subtotalCents: number;
+      postage: number;
+      totalCents: number;
+    };
 
 function makeOrderId() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -151,90 +164,175 @@ function makeOrderId() {
   return `DV-${tail}`;
 }
 
+async function prepareBasket(data: PlaceOrderInput | undefined): Promise<Basket> {
+  const zoneId = data?.zoneId;
+  const rawLines = Array.isArray(data?.lines) ? data.lines : [];
+  if (typeof zoneId !== "string") {
+    return { ok: false, message: "Choose a country so we know where to post it." };
+  }
+  const merged = new Map<string, number>();
+  for (const line of rawLines) {
+    if (!line || typeof line.bookId !== "string" || !/^[a-z0-9-]{1,40}$/.test(line.bookId)) {
+      return { ok: false, message: "One of the books in the basket is not on our shelf." };
+    }
+    const qty = Number(line.qty);
+    if (!Number.isInteger(qty) || qty < 1) {
+      return { ok: false, message: "Quantity has to be a whole number." };
+    }
+    merged.set(line.bookId, (merged.get(line.bookId) ?? 0) + qty);
+  }
+  const lines = [...merged.entries()].map(([bookId, qty]) => ({ bookId, qty }));
+  if (lines.length < 1 || lines.length > 12) {
+    return { ok: false, message: "Your basket is empty." };
+  }
+  if (lines.some((line) => line.qty > 4)) {
+    return { ok: false, message: "We can send at most four copies of a title in one parcel." };
+  }
+
+  const books = await loadBooks();
+  const items: OrderLine[] = [];
+  for (const line of lines) {
+    const book = books.find((item) => item.id === line.bookId);
+    if (!book) return { ok: false, message: "One of the books in the basket is not on our shelf." };
+    if (book.stock < line.qty) {
+      return {
+        ok: false,
+        message: book.stock <= 0 ? `${book.title} just sold out.` : `${book.title} has only ${book.stock} left.`,
+      };
+    }
+    items.push({
+      bookId: book.id,
+      slug: book.slug,
+      title: book.title,
+      qty: line.qty,
+      priceCents: book.priceCents,
+    });
+  }
+  const subtotalCents = items.reduce((sum, item) => sum + item.priceCents * item.qty, 0);
+  const itemCount = items.reduce((sum, item) => sum + item.qty, 0);
+  const postage = shippingCents(zoneId, itemCount, subtotalCents);
+  if (postage === null) {
+    return { ok: false, message: "We do not post to that destination yet." };
+  }
+  return { ok: true, lines, zoneId, items, subtotalCents, postage, totalCents: subtotalCents + postage };
+}
+
+export const getCheckoutConfig = createServerFn({ method: "GET" }).handler(async () => {
+  const { razorpayReady, usdInrRate } = await import("@/lib/razorpay.server");
+  if (!razorpayReady()) return { ready: false as const, rate: null };
+  try {
+    return { ready: true as const, rate: await usdInrRate() };
+  } catch {
+    return { ready: true as const, rate: null };
+  }
+});
+
+export const beginPayment = createServerFn({ method: "POST" })
+  .validator((input: PlaceOrderInput) => input)
+  .handler(async ({ data }) => {
+    const basket = await prepareBasket(data);
+    if (!basket.ok) return basket;
+    try {
+      const pay = await import("@/lib/razorpay.server");
+      if (!pay.razorpayReady()) {
+        return { ok: false as const, message: "Razorpay is not connected, so this till cannot take money yet." };
+      }
+      const rate = await pay.usdInrRate();
+      const paise = pay.usdCentsToPaise(basket.totalCents, rate);
+      const opened = await pay.createRazorpayOrder({
+        paise,
+        usdCents: basket.totalCents,
+        zoneId: basket.zoneId,
+        lines: basket.lines.map((line) => `${line.bookId}:${line.qty}`).join(","),
+        receipt: makeOrderId(),
+      });
+      return {
+        ok: true as const,
+        keyId: opened.keyId,
+        orderId: opened.orderId,
+        paise,
+        rate,
+        usdCents: basket.totalCents,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Razorpay could not open.";
+      return { ok: false as const, message };
+    }
+  });
+
 export const placeOrder = createServerFn({ method: "POST" })
   .validator((input: PlaceOrderInput) => input)
   .handler(async ({ data }) => {
-    const zoneId = data?.zoneId;
-    const rawLines = Array.isArray(data?.lines) ? data.lines : [];
-    if (typeof zoneId !== "string") {
-      return { ok: false as const, message: "Choose a country so we know where to post it." };
+    const basket = await prepareBasket(data);
+    if (!basket.ok) return basket;
+    const payment = data?.payment;
+    if (
+      !payment ||
+      typeof payment.orderId !== "string" ||
+      typeof payment.paymentId !== "string" ||
+      typeof payment.signature !== "string"
+    ) {
+      return { ok: false as const, message: "Pay with Razorpay before the parcel is reserved." };
     }
-    const merged = new Map<string, number>();
-    for (const line of rawLines) {
-      if (!line || typeof line.bookId !== "string" || !/^[a-z0-9-]{1,40}$/.test(line.bookId)) {
-        return { ok: false as const, message: "One of the books in the basket is not on our shelf." };
-      }
-      const qty = Number(line.qty);
-      if (!Number.isInteger(qty) || qty < 1) {
-        return { ok: false as const, message: "Quantity has to be a whole number." };
-      }
-      merged.set(line.bookId, (merged.get(line.bookId) ?? 0) + qty);
-    }
-    const lines = [...merged.entries()].map(([bookId, qty]) => ({ bookId, qty }));
-    if (lines.length < 1 || lines.length > 12) {
-      return { ok: false as const, message: "Your basket is empty." };
-    }
-    if (lines.some((line) => line.qty > 4)) {
-      return { ok: false as const, message: "We can send at most four copies of a title in one parcel." };
+
+    const pay = await import("@/lib/razorpay.server");
+    let confirmed: { method: string; last4: string };
+    try {
+      confirmed = await pay.confirmRazorpayPayment({
+        orderId: payment.orderId,
+        paymentId: payment.paymentId,
+        signature: payment.signature,
+        expectedUsdCents: basket.totalCents,
+        expectedZone: basket.zoneId,
+        expectedLines: basket.lines.map((line) => `${line.bookId}:${line.qty}`).join(","),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Razorpay could not confirm this payment.";
+      return { ok: false as const, message };
     }
 
     const sql = await sqlClient();
-    const taken: { id: string; slug: string; title: string; qty: number; priceCents: number }[] = [];
-
+    const taken: { id: string; qty: number }[] = [];
     const restore = async () => {
       for (const item of taken) {
         await sql`update books set stock = stock + ${item.qty} where id = ${item.id}`;
       }
     };
+    const refund = async (message: string) => {
+      await restore();
+      try {
+        await pay.refundRazorpayPayment(payment.paymentId);
+        return { ok: false as const, message: `${message} The payment was refunded.` };
+      } catch {
+        return {
+          ok: false as const,
+          message: `${message} The payment could not be refunded automatically. Quote ${payment.paymentId} and we will return it.`,
+        };
+      }
+    };
 
     try {
-      for (const line of lines) {
-        const updated = await sql<{ id: string; slug: string; title: string; price_cents: number | string }>`
+      for (const line of basket.lines) {
+        const updated = await sql<{ id: string; title: string }>`
           update books
           set stock = stock - ${line.qty}
           where id = ${line.bookId} and stock >= ${line.qty}
-          returning id, slug, title, price_cents
+          returning id, title
         `;
         const row = updated[0];
         if (!row) {
           const found = await sql<{ title: string; stock: number | string }>`
             select title, stock from books where id = ${line.bookId}
           `;
-          await restore();
           const title = found[0]?.title ?? "A title";
           const stock = found[0] ? num(found[0].stock) : 0;
-          const message =
-            stock <= 0
-              ? `${title} just sold out.`
-              : `${title} has only ${stock} left.`;
-          return { ok: false as const, message };
+          const message = stock <= 0 ? `${title} just sold out.` : `${title} has only ${stock} left.`;
+          return refund(message);
         }
-        taken.push({
-          id: row.id,
-          slug: row.slug,
-          title: row.title,
-          qty: line.qty,
-          priceCents: num(row.price_cents),
-        });
+        taken.push({ id: row.id, qty: line.qty });
       }
     } catch {
-      await restore();
-      return { ok: false as const, message: "The cupboard could not update. Try again." };
-    }
-
-    const items: OrderLine[] = taken.map((item) => ({
-      bookId: item.id,
-      slug: item.slug,
-      title: item.title,
-      qty: item.qty,
-      priceCents: item.priceCents,
-    }));
-    const subtotalCents = items.reduce((sum, item) => sum + item.priceCents * item.qty, 0);
-    const itemCount = items.reduce((sum, item) => sum + item.qty, 0);
-    const postage = shippingCents(zoneId, itemCount, subtotalCents);
-    if (postage === null) {
-      await restore();
-      return { ok: false as const, message: "We do not post to that destination yet." };
+      return refund("The cupboard could not update.");
     }
 
     let id = makeOrderId();
@@ -246,20 +344,26 @@ export const placeOrder = createServerFn({ method: "POST" })
 
     try {
       await sql`
-        insert into orders (id, items, subtotal_cents, shipping_cents, total_cents, region, status)
+        insert into orders (id, items, subtotal_cents, shipping_cents, total_cents, region, status, payment_id)
         values (
           ${id},
-          ${JSON.stringify(items)},
-          ${subtotalCents},
-          ${postage},
-          ${subtotalCents + postage},
-          ${zoneId},
-          'paid'
+          ${JSON.stringify(basket.items)},
+          ${basket.subtotalCents},
+          ${basket.postage},
+          ${basket.totalCents},
+          ${basket.zoneId},
+          'paid',
+          ${payment.paymentId}
         )
       `;
-    } catch {
-      await restore();
-      return { ok: false as const, message: "The till could not record this order. Nothing was kept." };
+    } catch (err) {
+      const text = err instanceof Error ? err.message : "";
+      const code = err && typeof err === "object" && "code" in err ? String(err.code) : "";
+      if (code === "23505" || text.includes("orders_payment_id_idx") || text.toLowerCase().includes("duplicate")) {
+        await restore();
+        return { ok: false as const, message: "This payment was already used for an order." };
+      }
+      return refund("The till could not record this order.");
     }
 
     for (const item of taken) {
@@ -271,15 +375,15 @@ export const placeOrder = createServerFn({ method: "POST" })
 
     const order: PublicOrder = {
       id,
-      items,
-      subtotalCents,
-      shippingCents: postage,
-      totalCents: subtotalCents + postage,
-      region: zoneId,
+      items: basket.items,
+      subtotalCents: basket.subtotalCents,
+      shippingCents: basket.postage,
+      totalCents: basket.totalCents,
+      region: basket.zoneId,
       status: "paid",
       createdAt: new Date().toISOString(),
     };
-    return { ok: true as const, order };
+    return { ok: true as const, order, method: confirmed.method, last4: confirmed.last4 };
   });
 
 export const getOrder = createServerFn({ method: "GET" })

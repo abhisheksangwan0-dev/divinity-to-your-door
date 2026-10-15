@@ -48,8 +48,8 @@ function OrderPage() {
         {server?.createdAt ? ` · ${formatWhen(server.createdAt)}` : ""}
       </p>
       <p className="mt-3 text-sm text-muted">
-        Demonstration payment. Nothing was charged
-        {receipt ? ` on the ${receipt.cardBrand} ending ${receipt.cardLast4}` : ""}.
+        Paid through Razorpay
+        {receipt ? ` · ${receipt.cardBrand}${receipt.cardLast4 ? ` · ${receipt.cardLast4}` : ""}` : ""}.
       </p>
 
       <ul className="mt-8 divide-y divide-line border-y border-line">

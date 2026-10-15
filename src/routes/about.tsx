@@ -23,7 +23,7 @@ function AboutPage() {
           The Qur'an volume is an English study companion. The Arabic recitation remains the sacred text. Japji is set with a facing English so a new reader can follow, not so the translation can replace the prayer.
         </p>
         <p>
-          Stock is one number. If a title says sold out, the cupboard is empty until someone restocks it. The till on this site is a demonstration: the test card moves stock and writes an order. It does not take money, and it does not keep your name.
+          Stock is one number. If a title says sold out, the cupboard is empty until someone restocks it. Checkout charges in rupees through Razorpay. The card and UPI pin stay with Razorpay. Your name and address stay on this device.
         </p>
       </div>
       <Link to="/shop" search={openShelf} className={buttonClass("solid", "mt-8")}>

@@ -47,7 +47,7 @@ function ShippingPage() {
       </p>
       <h2 className="mt-10 font-display text-3xl">The till</h2>
       <p className="mt-3 max-w-2xl text-muted">
-        Checkout accepts only demonstration cards. A full card number never leaves this browser. The shop stores an order number, the titles, a shipping region, and a total.
+        Checkout charges through Razorpay, in rupees, using UPI, a card, or netbanking. Shelf prices stay in dollars and are converted at the day's rate. The shop stores an order number, the titles, a shipping region, and a total. It does not store the card.
       </p>
     </main>
   );

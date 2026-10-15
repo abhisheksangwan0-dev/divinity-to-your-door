@@ -58,7 +58,7 @@ function StockroomPage() {
       <p className="text-xs tracking-widest text-vermilion uppercase">Staff desk</p>
       <h1 className="mt-2 font-display text-4xl sm:text-5xl">Stockroom</h1>
       <p className="mt-3 max-w-2xl text-muted">
-        This cupboard is open in the demonstration. Adjust a count or a price and the shelf changes for everyone. Orders listed here have no names.
+        Adjust a count or a price and the shelf changes for everyone. Orders listed here have no names.
       </p>
 
       <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
