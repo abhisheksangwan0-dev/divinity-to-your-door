@@ -30,7 +30,7 @@ export function SiteFooter() {
       </div>
       <div className="border-t border-white/10">
         <p className="mx-auto max-w-6xl px-5 py-4 text-xs text-sand">
-          © {new Date().getFullYear()} Divinity to your door. Demonstration shop — no real charges.
+          © {new Date().getFullYear()} Divinity to your door. Payments by Razorpay.
         </p>
       </div>
     </footer>
