@@ -95,6 +95,7 @@ function OrderPage() {
             {receipt.country}
           </p>
           <p className="mt-3 text-sm text-muted">{receipt.email}</p>
+          {receipt.phone ? <p className="text-sm text-muted">{receipt.phone}</p> : null}
           <p className="mt-3 text-sm text-muted">
             The stockroom has this address for posting. It is not shown on a shared link.
           </p>

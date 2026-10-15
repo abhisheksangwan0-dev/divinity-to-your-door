@@ -66,6 +66,7 @@ function CheckoutPage() {
   const [country, setCountry] = useState("");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [postal, setPostal] = useState("");
@@ -109,6 +110,10 @@ function CheckoutPage() {
       setError("Enter an email for the receipt.");
       return;
     }
+    if (phone.replace(/\D/g, "").length < 8) {
+      setError("Enter a phone number the courier can call.");
+      return;
+    }
     if (address.trim().length < 4 || city.trim().length < 2 || postal.trim().length < 2) {
       setError("Enter a street, city, and postal code.");
       return;
@@ -142,7 +147,7 @@ function CheckoutPage() {
         currency: "INR",
         name: "Divinity to your door",
         description: "Books posted from Jaipur",
-        prefill: { name: name.trim(), email: email.trim() },
+        prefill: { name: name.trim(), email: email.trim(), contact: phone.trim() },
         theme: { color: "#9C341F" },
         handler: (response: RazorpaySuccess) => {
           void (async () => {
@@ -158,6 +163,7 @@ function CheckoutPage() {
                 ship: {
                   name: name.trim(),
                   email: email.trim(),
+                  phone: phone.trim(),
                   street: address.trim(),
                   city: city.trim(),
                   postal: postal.trim(),
@@ -175,6 +181,7 @@ function CheckoutPage() {
               placedAt: result.order.createdAt,
               buyerName: name.trim(),
               email: email.trim(),
+              phone: phone.trim(),
               address: address.trim(),
               city: city.trim(),
               postal: postal.trim(),
@@ -216,14 +223,22 @@ function CheckoutPage() {
     <main className="mx-auto max-w-6xl px-5 py-10">
       <h1 className="font-display text-4xl">Checkout</h1>
       <p className="mt-2 max-w-xl text-muted">
-        The desk keeps your name and address so the parcel can be posted. Razorpay takes the payment. This shop never sees the card or UPI pin.
+        The desk keeps your name, phone, and address so the parcel can be posted. Razorpay takes the payment. This shop never sees the card or UPI pin.
       </p>
+      {!pay.ready ? (
+        <p className="mt-4 max-w-xl border border-line bg-ivory px-4 py-3 text-sm">
+          The till is not taking money yet. Razorpay still needs to be connected, so this parcel cannot be paid.
+        </p>
+      ) : null}
       <form onSubmit={payNow} className="mt-8 grid gap-10 lg:grid-cols-12">
         <div className="order-2 space-y-8 lg:order-1 lg:col-span-7">
           <fieldset className="space-y-4">
             <legend className="font-display text-2xl">Where it should arrive</legend>
             <Field label="Full name">
               <input className={inputClass()} value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required />
+            </Field>
+            <Field label="Phone" hint="The courier calls this number. It is stored with the parcel, not on the card.">
+              <input className={inputClass()} value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" inputMode="tel" required />
             </Field>
             <Field label="Email" hint="Sent to Razorpay with the payment. The receipt on this device uses it too.">
               <input className={inputClass()} value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" inputMode="email" required />

@@ -28,7 +28,9 @@ function ShopPage() {
   return (
     <main className="mx-auto max-w-6xl px-5 py-10">
       <p className="text-xs tracking-widest text-vermilion uppercase">The shelf</p>
-      <h1 className="mt-2 font-display text-4xl sm:text-5xl">Twelve editions, eight traditions.</h1>
+      <h1 className="mt-2 font-display text-4xl sm:text-5xl">
+        {books.length} editions, {new Set(books.map((book) => book.tradition)).size} traditions.
+      </h1>
       <p className="mt-3 max-w-xl text-muted">
         Search by title, author, or tradition. Sold-out copies stay visible so the cupboard stays honest.
       </p>

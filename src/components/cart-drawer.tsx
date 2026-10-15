@@ -61,6 +61,8 @@ export function CartDrawer() {
                 Browse the shelf
               </Link>
             </div>
+          ) : books.length === 0 ? (
+            <p className="px-5 py-8 text-muted">Opening the basket…</p>
           ) : (
             <>
               <ul className="flex-1 space-y-5 overflow-y-auto px-5 py-5">

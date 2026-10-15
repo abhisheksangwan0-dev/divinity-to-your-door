@@ -48,7 +48,11 @@ export function BookCard({ book }: { book: Book }) {
               toast("That is all we can send of this title.");
               return;
             }
-            add(book.id, 1, book.stock);
+            const added = add(book.id, 1, book.stock);
+            if (added < 1) {
+              toast("That is all we can send of this title.");
+              return;
+            }
             toast(`${book.title} is in the basket.`);
           }}
         >

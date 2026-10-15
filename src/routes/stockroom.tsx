@@ -275,6 +275,8 @@ function StockroomDesk({
                         <br />
                         {order.country}
                         <br />
+                        <span className="text-muted">{order.phone}</span>
+                        <br />
                         <span className="text-muted">{order.email}</span>
                       </p>
                     ) : (

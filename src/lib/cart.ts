@@ -11,7 +11,7 @@ type CartState = {
   setHydrated: (value: boolean) => void;
   openDrawer: () => void;
   closeDrawer: () => void;
-  add: (bookId: string, qty?: number, max?: number) => void;
+  add: (bookId: string, qty?: number, max?: number) => number;
   setQty: (bookId: string, qty: number, max?: number) => void;
   remove: (bookId: string) => void;
   clear: () => void;
@@ -28,19 +28,23 @@ export const useCart = create<CartState>()(
       setHydrated: (value) => set({ hydrated: value }),
       openDrawer: () => set({ drawerOpen: true }),
       closeDrawer: () => set({ drawerOpen: false }),
-      add: (bookId, qty = 1, max = CAP) =>
+      add: (bookId, qty = 1, max = CAP) => {
+        let added = 0;
         set((state) => {
           const cap = Math.min(CAP, Math.max(0, max));
           const existing = state.lines.find((line) => line.bookId === bookId);
           const nextQty = Math.min(cap, (existing?.qty ?? 0) + qty);
-          if (nextQty < 1) return state;
+          added = nextQty - (existing?.qty ?? 0);
+          if (added < 1) return state;
           const lines = existing
             ? state.lines.map((line) =>
                 line.bookId === bookId ? { ...line, qty: nextQty } : line,
               )
             : [...state.lines, { bookId, qty: nextQty }];
           return { lines, drawerOpen: true };
-        }),
+        });
+        return added;
+      },
       setQty: (bookId, qty, max = CAP) =>
         set((state) => ({
           lines: state.lines.map((line) =>

@@ -144,6 +144,7 @@ export type PlaceOrderInput = {
   ship?: {
     name: string;
     email: string;
+    phone: string;
     street: string;
     city: string;
     postal: string;
@@ -158,6 +159,7 @@ export type DeskOrder = PublicOrder & {
   city: string;
   postal: string;
   country: string;
+  phone: string;
 };
 
 type Basket =
@@ -192,10 +194,15 @@ function cleanShip(ship: PlaceOrderInput["ship"], zoneId: string) {
   const city = clip(ship?.city, 80);
   const postal = clip(ship?.postal, 16);
   const country = clip(ship?.country, 80);
+  const phone = clip(ship?.phone, 20);
+  const phoneDigits = phone.replace(/\D/g, "");
   const countryRow = COUNTRIES.find((item) => item.name === country);
   if (name.length < 2) return { ok: false as const, message: "Enter the name we should write on the parcel." };
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { ok: false as const, message: "Enter an email for the parcel." };
+  }
+  if (phoneDigits.length < 8 || phoneDigits.length > 15) {
+    return { ok: false as const, message: "Enter a phone number the courier can call." };
   }
   if (street.length < 4 || city.length < 2 || postal.length < 2) {
     return { ok: false as const, message: "Enter a street, city, and postal code." };
@@ -203,7 +210,7 @@ function cleanShip(ship: PlaceOrderInput["ship"], zoneId: string) {
   if (!countryRow || countryRow.zone !== zoneId) {
     return { ok: false as const, message: "Choose a country we post to." };
   }
-  return { ok: true as const, ship: { name, email, street, city, postal, country } };
+  return { ok: true as const, ship: { name, email, phone, street, city, postal, country } };
 }
 
 async function requireDesk() {
@@ -410,7 +417,7 @@ export const placeOrder = createServerFn({ method: "POST" })
       await sql`
         insert into orders (
           id, items, subtotal_cents, shipping_cents, total_cents, region, status, payment_id,
-          buyer_name, email, street, city, postal, country
+          buyer_name, email, phone, street, city, postal, country
         )
         values (
           ${id},
@@ -423,6 +430,7 @@ export const placeOrder = createServerFn({ method: "POST" })
           ${payment.paymentId},
           ${ship.ship.name},
           ${ship.ship.email},
+          ${ship.ship.phone},
           ${ship.ship.street},
           ${ship.ship.city},
           ${ship.ship.postal},
@@ -488,6 +496,7 @@ export const getStockroom = createServerFn({ method: "GET" }).handler(async () =
     OrderRow & {
       buyer_name: string;
       email: string;
+      phone: string;
       street: string;
       city: string;
       postal: string;
@@ -495,7 +504,7 @@ export const getStockroom = createServerFn({ method: "GET" }).handler(async () =
     }
   >`
     select id, items, subtotal_cents, shipping_cents, total_cents, region, status,
-           created_at::text as created_at, buyer_name, email, street, city, postal, country
+           created_at::text as created_at, buyer_name, email, phone, street, city, postal, country
     from orders
     order by created_at desc
     limit 30
@@ -529,6 +538,7 @@ export const getStockroom = createServerFn({ method: "GET" }).handler(async () =
       ...mapOrder(row),
       buyerName: row.buyer_name,
       email: row.email,
+      phone: row.phone,
       street: row.street,
       city: row.city,
       postal: row.postal,

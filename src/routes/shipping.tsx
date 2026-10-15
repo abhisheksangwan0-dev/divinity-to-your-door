@@ -43,11 +43,11 @@ function ShippingPage() {
       </div>
       <h2 className="mt-12 font-display text-3xl">Returns</h2>
       <p className="mt-3 max-w-2xl text-muted">
-        Unopened copies can come back within 30 days. You pay the return post unless we sent the wrong book. In the stockroom, a returned order puts the copies back in the cupboard and drops the sale from the till.
+        Unopened copies can come back within 30 days. You pay the return post unless we sent the wrong book. A return puts the copies back and asks Razorpay to send the money back.
       </p>
-      <h2 className="mt-10 font-display text-3xl">The till</h2>
+      <h2 className="mt-10 font-display text-3xl">Payment</h2>
       <p className="mt-3 max-w-2xl text-muted">
-        Checkout charges through Razorpay, in rupees, using UPI, a card, or netbanking. Shelf prices stay in dollars and are converted at the day's rate. The shop stores an order number, the titles, a shipping region, and a total. It does not store the card.
+        You pay in rupees through Razorpay: UPI, a card, or netbanking. Shelf prices are in dollars and convert at the day's rate. We keep the address and phone for the courier. We never see the card.
       </p>
     </main>
   );

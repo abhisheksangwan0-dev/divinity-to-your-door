@@ -76,19 +76,19 @@ function BookPage() {
                 type="button"
                 className={buttonClass("solid")}
                 onClick={() => {
-                  add(book.id, safeQty, book.stock);
-                  toast(`${book.title} is in the basket.`);
+                  const added = add(book.id, safeQty, book.stock);
+                  if (added < 1) {
+                    toast("That is all we can send of this title.");
+                    return;
+                  }
+                  toast(added === 1 ? `${book.title} is in the basket.` : `${added} copies of ${book.title} are in the basket.`);
                 }}
               >
                 Add to basket
               </button>
             </div>
           ) : (
-            <p className="mt-6 text-sm">
-              <Link to="/stockroom" className="underline underline-offset-4">
-                Restock it in the stockroom
-              </Link>
-            </p>
+            <p className="mt-6 text-sm text-muted">This title is out of the cupboard. It stays on the shelf so you can see it is gone.</p>
           )}
           <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-4 border-t border-line pt-6 text-sm">
             <Spec k="Edition" v={`No. ${book.editionNo}`} />

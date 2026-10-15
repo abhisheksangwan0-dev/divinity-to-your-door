@@ -5,6 +5,7 @@ export type Receipt = {
   placedAt: string;
   buyerName: string;
   email: string;
+  phone: string;
   address: string;
   city: string;
   postal: string;

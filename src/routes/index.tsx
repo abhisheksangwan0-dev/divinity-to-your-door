@@ -40,7 +40,7 @@ function Home() {
               Browse the shelf
             </Link>
             <Link to="/shipping" className={buttonClass("ghost")}>
-              Shipping and the till
+              Shipping and returns
             </Link>
           </div>
           <dl className="mt-10 grid grid-cols-3 gap-4 border-t border-line pt-6">
@@ -117,12 +117,12 @@ function Home() {
             {
               icon: BookOpen,
               title: "One cupboard",
-              body: "The shelf and the stockroom share a count. Restock a title and it returns at once.",
+              body: "The number on a title is the number we can post. Sold out means the cupboard is empty.",
             },
             {
               icon: CreditCard,
               title: "Razorpay till",
-              body: "UPI, cards, and netbanking. Prices are in dollars; the charge is in rupees. No monthly fee.",
+              body: "UPI, cards, and netbanking. The price you see is in dollars. The charge is in rupees.",
             },
           ].map((item) => (
             <li key={item.title} className="border border-line bg-paper p-5">

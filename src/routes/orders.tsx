@@ -23,7 +23,7 @@ function OrdersPage() {
       <p className="text-xs tracking-widest text-vermilion uppercase">This browser</p>
       <h1 className="mt-2 font-display text-4xl">Orders</h1>
       <p className="mt-3 text-muted">
-        Receipts stay here, with the name and address you typed. The shop's till tape does not keep them.
+        Receipts on this phone or computer. The desk also keeps the address and phone number, so a parcel can still be posted if you clear this browser.
       </p>
       {receipts.length === 0 ? (
         <div className="mt-8">
