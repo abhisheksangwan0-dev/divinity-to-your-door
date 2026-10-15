@@ -105,6 +105,13 @@ export async function createRazorpayOrder(input: {
   return { keyId, orderId: order.id, paise: input.paise, currency: "INR" as const };
 }
 
+export class PaidButRejected extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PaidButRejected";
+  }
+}
+
 function signaturesMatch(expected: string, received: string) {
   const a = Buffer.from(expected);
   const b = Buffer.from(received);
@@ -140,6 +147,9 @@ export async function confirmRazorpayPayment(input: {
     order.notes?.zone !== input.expectedZone ||
     order.notes?.lines !== input.expectedLines.slice(0, 240)
   ) {
+    if (payment.status === "captured" || payment.status === "authorized") {
+      throw new PaidButRejected("The payment does not match this basket.");
+    }
     throw new Error("The payment does not match this basket.");
   }
 

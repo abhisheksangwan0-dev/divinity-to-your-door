@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { Book, OrderLine, PublicOrder, StockMove } from "@/lib/catalog";
-import { shippingCents } from "@/lib/shipping";
+import { COUNTRIES, shippingCents } from "@/lib/shipping";
 
 type BookRow = {
   id: string;
@@ -141,6 +141,23 @@ export type PlaceOrderInput = {
   lines: { bookId: string; qty: number }[];
   zoneId: string;
   payment?: { orderId: string; paymentId: string; signature: string };
+  ship?: {
+    name: string;
+    email: string;
+    street: string;
+    city: string;
+    postal: string;
+    country: string;
+  };
+};
+
+export type DeskOrder = PublicOrder & {
+  buyerName: string;
+  email: string;
+  street: string;
+  city: string;
+  postal: string;
+  country: string;
 };
 
 type Basket =
@@ -162,6 +179,39 @@ function makeOrderId() {
     tail += alphabet[Math.floor(Math.random() * alphabet.length)];
   }
   return `DV-${tail}`;
+}
+
+function clip(value: unknown, max: number) {
+  return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function cleanShip(ship: PlaceOrderInput["ship"], zoneId: string) {
+  const name = clip(ship?.name, 80);
+  const email = clip(ship?.email, 120);
+  const street = clip(ship?.street, 160);
+  const city = clip(ship?.city, 80);
+  const postal = clip(ship?.postal, 16);
+  const country = clip(ship?.country, 80);
+  const countryRow = COUNTRIES.find((item) => item.name === country);
+  if (name.length < 2) return { ok: false as const, message: "Enter the name we should write on the parcel." };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { ok: false as const, message: "Enter an email for the parcel." };
+  }
+  if (street.length < 4 || city.length < 2 || postal.length < 2) {
+    return { ok: false as const, message: "Enter a street, city, and postal code." };
+  }
+  if (!countryRow || countryRow.zone !== zoneId) {
+    return { ok: false as const, message: "Choose a country we post to." };
+  }
+  return { ok: true as const, ship: { name, email, street, city, postal, country } };
+}
+
+async function requireDesk() {
+  const desk = await import("@/lib/desk.server");
+  if (!(await desk.deskOpen())) {
+    return { ok: false as const, message: "The stockroom is locked." };
+  }
+  return null;
 }
 
 async function prepareBasket(data: PlaceOrderInput | undefined): Promise<Basket> {
@@ -287,6 +337,17 @@ export const placeOrder = createServerFn({ method: "POST" })
         expectedLines: basket.lines.map((line) => `${line.bookId}:${line.qty}`).join(","),
       });
     } catch (err) {
+      if (err instanceof pay.PaidButRejected) {
+        try {
+          await pay.refundRazorpayPayment(payment.paymentId);
+          return { ok: false as const, message: `${err.message} The payment was refunded.` };
+        } catch {
+          return {
+            ok: false as const,
+            message: `${err.message} Quote ${payment.paymentId} so it can be returned.`,
+          };
+        }
+      }
       const message = err instanceof Error ? err.message : "Razorpay could not confirm this payment.";
       return { ok: false as const, message };
     }
@@ -310,6 +371,9 @@ export const placeOrder = createServerFn({ method: "POST" })
         };
       }
     };
+
+    const ship = cleanShip(data?.ship, basket.zoneId);
+    if (!ship.ok) return refund(ship.message);
 
     try {
       for (const line of basket.lines) {
@@ -344,7 +408,10 @@ export const placeOrder = createServerFn({ method: "POST" })
 
     try {
       await sql`
-        insert into orders (id, items, subtotal_cents, shipping_cents, total_cents, region, status, payment_id)
+        insert into orders (
+          id, items, subtotal_cents, shipping_cents, total_cents, region, status, payment_id,
+          buyer_name, email, street, city, postal, country
+        )
         values (
           ${id},
           ${JSON.stringify(basket.items)},
@@ -353,7 +420,13 @@ export const placeOrder = createServerFn({ method: "POST" })
           ${basket.totalCents},
           ${basket.zoneId},
           'paid',
-          ${payment.paymentId}
+          ${payment.paymentId},
+          ${ship.ship.name},
+          ${ship.ship.email},
+          ${ship.ship.street},
+          ${ship.ship.city},
+          ${ship.ship.postal},
+          ${ship.ship.country}
         )
       `;
     } catch (err) {
@@ -399,12 +472,30 @@ export const getOrder = createServerFn({ method: "GET" })
     return rows[0] ? mapOrder(rows[0]) : null;
   });
 
+export const unlockStockroom = createServerFn({ method: "POST" })
+  .validator((input: { password?: string }) => input)
+  .handler(async ({ data }) => {
+    const desk = await import("@/lib/desk.server");
+    return desk.unlockDesk(typeof data?.password === "string" ? data.password : "");
+  });
+
 export const getStockroom = createServerFn({ method: "GET" }).handler(async () => {
+  const locked = await requireDesk();
+  if (locked) return { locked: true as const };
   const books = await loadBooks();
   const sql = await sqlClient();
-  const orderRows = await sql<OrderRow>`
+  const orderRows = await sql<
+    OrderRow & {
+      buyer_name: string;
+      email: string;
+      street: string;
+      city: string;
+      postal: string;
+      country: string;
+    }
+  >`
     select id, items, subtotal_cents, shipping_cents, total_cents, region, status,
-           created_at::text as created_at
+           created_at::text as created_at, buyer_name, email, street, city, postal, country
     from orders
     order by created_at desc
     limit 30
@@ -432,8 +523,17 @@ export const getStockroom = createServerFn({ method: "GET" }).handler(async () =
     createdAt: row.created_at,
   }));
   return {
+    locked: false as const,
     books,
-    orders: orderRows.map(mapOrder),
+    orders: orderRows.map((row) => ({
+      ...mapOrder(row),
+      buyerName: row.buyer_name,
+      email: row.email,
+      street: row.street,
+      city: row.city,
+      postal: row.postal,
+      country: row.country,
+    })),
     moves,
     units: books.reduce((sum, book) => sum + book.stock, 0),
     low: books.filter((book) => book.stock > 0 && book.stock <= book.lowStockAt).length,
@@ -446,6 +546,8 @@ export const getStockroom = createServerFn({ method: "GET" }).handler(async () =
 export const adjustStock = createServerFn({ method: "POST" })
   .validator((input: { bookId: string; delta: number }) => input)
   .handler(async ({ data }) => {
+    const locked = await requireDesk();
+    if (locked) return locked;
     if (!data || typeof data.bookId !== "string" || !/^[a-z0-9-]{1,40}$/.test(data.bookId)) {
       return { ok: false as const, message: "Unknown book." };
     }
@@ -478,6 +580,8 @@ export const adjustStock = createServerFn({ method: "POST" })
 export const setPrice = createServerFn({ method: "POST" })
   .validator((input: { bookId: string; priceCents: number }) => input)
   .handler(async ({ data }) => {
+    const locked = await requireDesk();
+    if (locked) return locked;
     if (!data || typeof data.bookId !== "string" || !/^[a-z0-9-]{1,40}$/.test(data.bookId)) {
       return { ok: false as const, message: "Unknown book." };
     }
@@ -496,20 +600,39 @@ export const setPrice = createServerFn({ method: "POST" })
 export const returnOrder = createServerFn({ method: "POST" })
   .validator((input: { id: string }) => input)
   .handler(async ({ data }) => {
+    const locked = await requireDesk();
+    if (locked) return locked;
     if (!data || typeof data.id !== "string" || !/^DV-[A-Z0-9]{6}$/.test(data.id)) {
       return { ok: false as const, message: "Unknown order." };
     }
     const sql = await sqlClient();
+    const existing = await sql<{ items: unknown; payment_id: string | null }>`
+      select items, payment_id from orders where id = ${data.id} and status = 'paid'
+    `;
+    if (!existing[0]) {
+      return {
+        ok: false as const,
+        message: "That order is already back on the shelf, or it does not exist.",
+      };
+    }
+    if (existing[0].payment_id) {
+      try {
+        const pay = await import("@/lib/razorpay.server");
+        await pay.refundRazorpayPayment(existing[0].payment_id);
+      } catch {
+        return {
+          ok: false as const,
+          message: "Razorpay did not refund this payment, so the books stayed sold.",
+        };
+      }
+    }
     const updated = await sql<{ items: unknown }>`
       update orders set status = 'returned'
       where id = ${data.id} and status = 'paid'
       returning items
     `;
     if (!updated[0]) {
-      return {
-        ok: false as const,
-        message: "That order is already back on the shelf, or it does not exist.",
-      };
+      return { ok: false as const, message: "That order is already back on the shelf." };
     }
     for (const item of asItems(updated[0].items)) {
       await sql`

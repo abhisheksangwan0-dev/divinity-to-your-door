@@ -96,12 +96,12 @@ function OrderPage() {
           </p>
           <p className="mt-3 text-sm text-muted">{receipt.email}</p>
           <p className="mt-3 text-sm text-muted">
-            These details live only in this browser. The stockroom never sees them.
+            The stockroom has this address for posting. It is not shown on a shared link.
           </p>
         </div>
       ) : (
         <p className="mt-8 text-sm text-muted">
-          The address was kept on the device that placed the order. This view shows the books and the total only.
+          Open this order on the device that paid to see the address again. The stockroom copy is the one used for posting.
         </p>
       )}
 

@@ -1,7 +1,7 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
-import { adjustStock, getStockroom, returnOrder, setPrice } from "@/lib/shop";
+import { adjustStock, getStockroom, returnOrder, setPrice, unlockStockroom } from "@/lib/shop";
 import { formatMoney, formatWhen } from "@/lib/format";
 import { zoneById } from "@/lib/shipping";
 import { cn } from "@/lib/cn";
@@ -24,6 +24,68 @@ function dollarsToCents(value: string) {
 
 function StockroomPage() {
   const data = Route.useLoaderData();
+  const router = useRouter();
+  const [password, setPassword] = useState("");
+  const [lockError, setLockError] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+
+  if (data.locked) {
+    return (
+      <main className="mx-auto max-w-md px-5 py-16">
+        <p className="text-xs tracking-widest text-vermilion uppercase">Staff desk</p>
+        <h1 className="mt-2 font-display text-4xl">Stockroom is locked.</h1>
+        <p className="mt-3 text-muted">Prices, counts, and addresses stay behind this door.</p>
+        <form
+          className="mt-6 space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setUnlocking(true);
+            setLockError("");
+            void unlockStockroom({ data: { password } })
+              .then(async (result) => {
+                if (!result.ok) {
+                  setLockError(result.message);
+                  return;
+                }
+                setPassword("");
+                await router.invalidate();
+              })
+              .catch(() => setLockError("The desk could not be reached."))
+              .finally(() => setUnlocking(false));
+          }}
+        >
+          <label className="block text-sm">
+            Passphrase
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              className="mt-1 h-12 w-full border border-line bg-paper px-3"
+              required
+            />
+          </label>
+          {lockError ? <p className="text-sm text-vermilion">{lockError}</p> : null}
+          <button
+            type="submit"
+            disabled={unlocking}
+            className="min-h-11 border border-ink bg-ink px-4 text-paper disabled:opacity-40"
+          >
+            {unlocking ? "Checking…" : "Unlock"}
+          </button>
+        </form>
+      </main>
+    );
+  }
+
+  return <StockroomDesk data={data} />;
+}
+
+function StockroomDesk({
+  data,
+}: {
+  data: Extract<Awaited<ReturnType<typeof getStockroom>>, { locked: false }>;
+}) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [tight, setTight] = useState(false);
@@ -203,6 +265,21 @@ function StockroomPage() {
                     <p className="mt-1 text-sm">
                       {order.items.map((item) => `${item.qty} × ${item.title}`).join(", ")}
                     </p>
+                    {order.buyerName ? (
+                      <p className="mt-2 text-sm">
+                        {order.buyerName}
+                        <br />
+                        {order.street}
+                        <br />
+                        {order.city} {order.postal}
+                        <br />
+                        {order.country}
+                        <br />
+                        <span className="text-muted">{order.email}</span>
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-sm text-muted">No address was stored for this order.</p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="tabular-nums">{formatMoney(order.totalCents)}</p>

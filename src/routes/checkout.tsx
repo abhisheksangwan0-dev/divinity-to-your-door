@@ -155,6 +155,14 @@ function CheckoutPage() {
                   paymentId: response.razorpay_payment_id,
                   signature: response.razorpay_signature,
                 },
+                ship: {
+                  name: name.trim(),
+                  email: email.trim(),
+                  street: address.trim(),
+                  city: city.trim(),
+                  postal: postal.trim(),
+                  country,
+                },
               },
             });
             if (!result.ok) {
@@ -208,7 +216,7 @@ function CheckoutPage() {
     <main className="mx-auto max-w-6xl px-5 py-10">
       <h1 className="font-display text-4xl">Checkout</h1>
       <p className="mt-2 max-w-xl text-muted">
-        Your name and address stay on this device. Razorpay takes the payment. This shop never sees the card or UPI pin.
+        The desk keeps your name and address so the parcel can be posted. Razorpay takes the payment. This shop never sees the card or UPI pin.
       </p>
       <form onSubmit={payNow} className="mt-8 grid gap-10 lg:grid-cols-12">
         <div className="order-2 space-y-8 lg:order-1 lg:col-span-7">
